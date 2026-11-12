@@ -24,6 +24,22 @@ Marketplace para conectar clientes validados con empresas de construcción habil
 
 No subas `.env`, respaldos, documentos de identidad ni credenciales al repositorio. En producción, los binarios de verificación y las imágenes deben almacenarse cifrados en un object store privado; PostgreSQL solo conserva referencias y metadatos.
 
+## Validación automática de empresas (SII)
+
+`npm run verify:companies -- --file PUB_NOMBRES_PJ.zip` revisa las solicitudes pendientes de cuentas empresa contra la [Nómina de Personas Jurídicas del SII](https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html) (archivo público, sin captcha). Sin `--apply` solo muestra el informe.
+
+```bash
+curl -LO https://www.sii.cl/estadisticas/nominas/PUB_NOMBRES_PJ.zip
+npm run verify:companies -- --file PUB_NOMBRES_PJ.zip           # simulación
+npm run verify:companies -- --file PUB_NOMBRES_PJ.zip --apply   # guarda decisiones
+```
+
+- **Aprueba** si el RUT tiene dígito verificador válido, figura en la nómina sin término de giro, la razón social coincide (sin importar tildes, puntuación ni forma jurídica) y no está validado en otra cuenta.
+- **Rechaza** si el dígito verificador es inválido o la empresa tiene término de giro. La empresa puede volver a enviar su solicitud.
+- **Deja para revisión manual** todo lo demás: referencia que no es RUT, RUT fuera de la nómina (personas naturales o empresas más nuevas que la nómina), razón social distinta o RUT repetido.
+- Cada decisión queda en `audit_log` como `verification.verified` o `verification.rejected`, con `actor_user_id` nulo y motivo "Validación automática SII". No modifica cuentas suspendidas.
+- La nómina se actualiza aproximadamente una vez al año; las empresas creadas después quedan para revisión manual.
+
 ## GitHub y Cloudflare
 
 El frontend se publica mediante Cloudflare Workers Static Assets usando `wrangler deploy`. El despliegue automático de GitHub está deshabilitado para evitar ejecuciones duplicadas sin credenciales.
