@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool, withTransaction } from "../db.ts";
-import { HttpError, text } from "../http.ts";
+import { allowOnlyFields, HttpError, text } from "../http.ts";
 import { requireAnyRole, requireUser } from "../middleware/auth.ts";
 
 export const profilesRouter = Router();
@@ -102,6 +102,7 @@ profilesRouter.get("/account/profile", requireUser, requireAnyRole(...providerRo
 
 profilesRouter.put("/account/profile", requireUser, requireAnyRole(...providerRoles), async (request, response, next) => {
   try {
+    allowOnlyFields(request.body, ["displayName", "phone", "publicEmail", "commune", "specialties", "description", "website", "showContact", "logoUploadId"]);
     const displayName = text(request.body.displayName, 140);
     const normalizedPhone = phone(request.body.phone);
     const normalizedEmail = publicEmail(request.body.publicEmail);
