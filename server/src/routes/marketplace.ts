@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool, withTransaction } from "../db.ts";
-import { HttpError, positiveMoney, text } from "../http.ts";
+import { allowOnlyFields, HttpError, positiveMoney, text, uuid } from "../http.ts";
 import { requireAnyRole, requireRole, requireUser, requireVerified } from "../middleware/auth.ts";
 
 export const marketplaceRouter = Router();
@@ -23,6 +23,7 @@ async function assertProjectAssetAccess(projectId: string, user: NonNullable<Exp
 
 marketplaceRouter.post("/reports", requireUser, requireVerified, async (request, response, next) => {
   try {
+    allowOnlyFields(request.body, ["targetType", "targetId", "reason"]);
     const targetType = request.body.targetType;
     if (!(targetType === "user" || targetType === "project")) throw new HttpError(400, "Tipo de reporte inválido.");
     const targetId = text(request.body.targetId, 36);
@@ -64,6 +65,7 @@ marketplaceRouter.get("/account/overview", requireUser, async (request, response
 
 marketplaceRouter.get("/projects/:projectId/quotes", requireUser, requireRole("client"), requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
     const result = await pool.query(
       `SELECT q.id, q.amount, q.duration_days, q.scope, q.status, q.created_at,
               u.display_name AS company_name
@@ -77,6 +79,7 @@ marketplaceRouter.get("/projects/:projectId/quotes", requireUser, requireRole("c
 
 marketplaceRouter.get("/projects/:projectId/messages", requireUser, requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
     const result = await pool.query(
       `SELECT m.id, m.body, m.created_at, m.sender_user_id, u.display_name AS sender_name
          FROM messages m JOIN projects p ON p.id = m.project_id JOIN users u ON u.id = m.sender_user_id
@@ -91,6 +94,7 @@ marketplaceRouter.get("/projects/:projectId/messages", requireUser, requireVerif
 
 marketplaceRouter.get("/projects/:projectId/assets", requireUser, requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
     await assertProjectAssetAccess(request.params.projectId, request.user!);
     const result = await pool.query(
       `SELECT up.id, up.original_name, up.mime_type, up.size_bytes, up.created_at
@@ -104,6 +108,8 @@ marketplaceRouter.get("/projects/:projectId/assets", requireUser, requireVerifie
 
 marketplaceRouter.get("/projects/:projectId/assets/:uploadId", requireUser, requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
+    uuid(request.params.uploadId, true);
     await assertProjectAssetAccess(request.params.projectId, request.user!);
     const result = await pool.query(
       `SELECT up.original_name, up.mime_type, up.size_bytes, up.checksum, up.data
@@ -126,7 +132,10 @@ marketplaceRouter.get("/projects/:projectId/assets/:uploadId", requireUser, requ
 
 marketplaceRouter.post("/projects/:projectId/assets", requireUser, requireRole("client"), requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
+    allowOnlyFields(request.body, ["uploadId"]);
     const uploadId = text(request.body.uploadId, 36);
+    uuid(uploadId);
     const linkedId = await withTransaction(async client => {
       const project = await client.query(
         `SELECT id FROM projects WHERE id = $1 AND client_id = $2 AND status IN ('open', 'contracted') FOR UPDATE`,
@@ -176,6 +185,7 @@ marketplaceRouter.get("/companies", async (_request, response, next) => {
 
 marketplaceRouter.post("/projects", requireUser, requireRole("client"), requireVerified, async (request, response, next) => {
   try {
+    allowOnlyFields(request.body, ["title", "description", "category", "commune", "budgetMin", "budgetMax", "uploadKeys"]);
     const budgetMin = positiveMoney(request.body.budgetMin);
     const budgetMax = positiveMoney(request.body.budgetMax);
     if (budgetMax < budgetMin) throw new HttpError(400, "El presupuesto máximo no puede ser menor al mínimo.", "invalid_budget_range");
@@ -212,6 +222,8 @@ marketplaceRouter.post("/projects", requireUser, requireRole("client"), requireV
 
 marketplaceRouter.post("/projects/:projectId/quotes", requireUser, requireAnyRole("company", "professional"), requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
+    allowOnlyFields(request.body, ["amount", "durationDays", "scope"]);
     const durationDays = Number(request.body.durationDays);
     if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650) throw new HttpError(400, "Duración inválida.", "invalid_duration");
     const result = await pool.query(
@@ -227,6 +239,8 @@ marketplaceRouter.post("/projects/:projectId/quotes", requireUser, requireAnyRol
 
 marketplaceRouter.post("/projects/:projectId/quotes/:quoteId/accept", requireUser, requireRole("client"), requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
+    uuid(request.params.quoteId, true);
     const accepted = await withTransaction(async client => {
       // Locking the project and the partial unique index together protect against double-click races.
       const projectResult = await client.query(`SELECT id, client_id, status FROM projects WHERE id = $1 FOR UPDATE`, [request.params.projectId]);
@@ -253,6 +267,8 @@ marketplaceRouter.post("/projects/:projectId/quotes/:quoteId/accept", requireUse
 
 marketplaceRouter.post("/projects/:projectId/messages", requireUser, requireVerified, async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
+    allowOnlyFields(request.body, ["body"]);
     const result = await pool.query(
       `INSERT INTO messages (project_id, sender_user_id, body)
        SELECT p.id, $2, $3 FROM projects p

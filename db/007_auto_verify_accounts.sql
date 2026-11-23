@@ -7,11 +7,14 @@ WITH promoted AS (
   UPDATE verification_requests
      SET status = 'verified', reviewed_at = now(), reviewed_by = NULL,
          review_reason = 'Aprobación automática temporal de cuentas.'
-   WHERE status = 'pending' AND EXISTS (
-     SELECT 1 FROM users u
-      WHERE u.id = verification_requests.user_id
-        AND u.role IN ('client', 'company', 'professional')
-        AND u.verification_status = 'verified'
+   -- Las sentencias de un WITH no ven los cambios de sus hermanas: se incluye a los recién promovidos por su id.
+   WHERE status = 'pending' AND (
+     user_id IN (SELECT id FROM promoted) OR EXISTS (
+       SELECT 1 FROM users u
+        WHERE u.id = verification_requests.user_id
+          AND u.role IN ('client', 'company', 'professional')
+          AND u.verification_status = 'verified'
+     )
    )
   RETURNING user_id
 )
