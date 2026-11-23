@@ -15,6 +15,12 @@ Marketplace para conectar clientes validados con empresas de construcción habil
 - Imágenes limitadas a 5 MB y verificadas por firma real JPG, PNG o WebP.
 - Acciones críticas registradas en `audit_log`.
 
+## Validación de cuentas
+
+- Temporalmente, las cuentas **cliente**, **empresa** y **maestro independiente** se validan automáticamente al registrarse.
+- Empresas y maestros pueden completar sus antecedentes de verificación, pero el envío no bloquea el uso de la cuenta mientras este modo temporal esté activo.
+- Cada aprobación automática queda registrada en `audit_log`; una suspensión administrativa sigue revocando las sesiones.
+
 ## Ejecución local
 
 1. Copia `.env.example` como `.env` y reemplaza los valores.

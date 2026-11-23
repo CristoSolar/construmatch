@@ -6,7 +6,8 @@ import { HttpError, text } from "../http.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
 import { clearSessionCookie, parseCookies, sessionCookie } from "../security/requests.ts";
 import { createToken, hashToken } from "../security/tokens.ts";
-import { requireUser } from "../middleware/auth.ts";
+import { requireAnyRole, requireUser } from "../middleware/auth.ts";
+import { initialVerificationStatus, type PublicAccountRole } from "../verification/accounts.ts";
 
 export const authRouter = Router();
 const dummyHash = hashPassword("not-a-real-password-123!");
@@ -35,18 +36,27 @@ authRouter.get("/me", requireUser, async (request, response, next) => {
 
 authRouter.post("/register", async (request, response, next) => {
   try {
-    const role = request.body.role;
+    const role = request.body.role as PublicAccountRole;
     if (!(["client", "company", "professional"] as const).includes(role)) throw new HttpError(400, "Tipo de cuenta inválido.");
     const email = normalizeEmail(request.body.email);
     const username = normalizeUsername(request.body.username);
     const name = text(request.body.name, 140);
     const passwordHash = await hashPassword(text(request.body.password, 200));
-    const result = await pool.query(
-      `INSERT INTO users (email, username, display_name, role, password_hash)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id, username, role, verification_status`,
-      [email, username, name, role, passwordHash],
-    );
-    response.status(201).json(result.rows[0]);
+    const verificationStatus = initialVerificationStatus(role);
+    const account = await withTransaction(async client => {
+      const result = await client.query(
+        `INSERT INTO users (email, username, display_name, role, password_hash, verification_status)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, role, verification_status`,
+        [email, username, name, role, passwordHash, verificationStatus],
+      );
+      await client.query(
+        `INSERT INTO audit_log (actor_user_id, action, target_type, target_id, reason)
+         VALUES (NULL, 'verification.account_auto_approved', 'user', $1, 'Aprobación automática temporal al crear la cuenta.')`,
+        [result.rows[0].id],
+      );
+      return result.rows[0];
+    });
+    response.status(201).json(account);
   } catch (error: any) {
     if (error?.code === "23505") return next(new HttpError(409, "El correo o nombre de usuario ya está ocupado.", "account_unavailable"));
     next(error);
@@ -116,18 +126,19 @@ authRouter.post("/change-password", requireUser, async (request, response, next)
   } catch (error) { next(error); }
 });
 
-authRouter.post("/verification", requireUser, async (request, response, next) => {
+authRouter.post("/verification", requireUser, requireAnyRole("company", "professional"), async (request, response, next) => {
   try {
     const legalName = text(request.body.legalName, 180);
     const documentReference = text(request.body.documentReference, 120);
     const registrationReference = request.user!.role === "company" ? text(request.body.registrationReference, 160) : (typeof request.body.registrationReference === "string" ? request.body.registrationReference.trim().slice(0, 160) || null : null);
     await pool.query(
-      `INSERT INTO verification_requests (user_id, legal_name, document_reference, registration_reference)
-       VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO UPDATE SET legal_name = EXCLUDED.legal_name,
+      `INSERT INTO verification_requests (user_id, legal_name, document_reference, registration_reference, status, reviewed_at, review_reason)
+       VALUES ($1, $2, $3, $4, 'verified', now(), 'Aprobación automática temporal.') ON CONFLICT (user_id) DO UPDATE SET legal_name = EXCLUDED.legal_name,
        document_reference = EXCLUDED.document_reference, registration_reference = EXCLUDED.registration_reference,
-       status = 'pending', submitted_at = now()`,
+       status = 'verified', submitted_at = now(), reviewed_at = now(), reviewed_by = NULL,
+       review_reason = 'Aprobación automática temporal.'`,
       [request.user!.id, legalName, documentReference, registrationReference],
     );
-    response.status(202).json({ status: "pending" });
+    response.status(202).json({ status: "verified" });
   } catch (error) { next(error); }
 });
