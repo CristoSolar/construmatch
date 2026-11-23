@@ -2,7 +2,7 @@ import { Router } from "express";
 import { createHash } from "node:crypto";
 import { pool, withTransaction } from "../db.ts";
 import { config } from "../config.ts";
-import { HttpError, text } from "../http.ts";
+import { allowOnlyFields, HttpError, text } from "../http.ts";
 import { hashPassword, verifyPassword } from "../security/passwords.ts";
 import { clearSessionCookie, parseCookies, sessionCookie } from "../security/requests.ts";
 import { createToken, hashToken } from "../security/tokens.ts";
@@ -35,6 +35,7 @@ authRouter.get("/me", requireUser, async (request, response, next) => {
 
 authRouter.post("/register", async (request, response, next) => {
   try {
+    allowOnlyFields(request.body, ["role", "email", "username", "name", "password"]);
     const role = request.body.role;
     if (!(["client", "company", "professional"] as const).includes(role)) throw new HttpError(400, "Tipo de cuenta inválido.");
     const email = normalizeEmail(request.body.email);
@@ -54,11 +55,12 @@ authRouter.post("/register", async (request, response, next) => {
 });
 
 authRouter.post("/login", async (request, response, next) => {
-  const identifierInput = text(request.body.identifier ?? request.body.email, 254).toLowerCase();
-  const password = text(request.body.password, 200);
-  const ip = request.ip ?? "0.0.0.0";
-  const identifierHash = createHash("sha256").update(identifierInput).digest("hex");
   try {
+    allowOnlyFields(request.body, ["identifier", "email", "password"]);
+    const identifierInput = text(request.body.identifier ?? request.body.email, 254).toLowerCase();
+    const password = text(request.body.password, 200);
+    const ip = request.ip ?? "0.0.0.0";
+    const identifierHash = createHash("sha256").update(identifierInput).digest("hex");
     const limits = await pool.query(
       `SELECT count(*) FILTER (WHERE identifier_hash = $1 AND ip = $2 AND occurred_at > now() - interval '15 minutes') AS account_ip,
               count(*) FILTER (WHERE ip = $2 AND occurred_at > now() - interval '15 minutes') AS ip_total FROM login_failures`,
@@ -100,6 +102,7 @@ authRouter.post("/logout", requireUser, async (request, response, next) => {
 
 authRouter.post("/change-password", requireUser, async (request, response, next) => {
   try {
+    allowOnlyFields(request.body, ["currentPassword", "newPassword"]);
     const currentPassword = text(request.body.currentPassword, 200);
     const newPassword = text(request.body.newPassword, 200);
     if (currentPassword === newPassword) throw new HttpError(400, "La nueva contraseña debe ser distinta.", "password_unchanged");
@@ -118,6 +121,7 @@ authRouter.post("/change-password", requireUser, async (request, response, next)
 
 authRouter.post("/verification", requireUser, async (request, response, next) => {
   try {
+    allowOnlyFields(request.body, ["legalName", "documentReference", "registrationReference"]);
     const legalName = text(request.body.legalName, 180);
     const documentReference = text(request.body.documentReference, 120);
     const registrationReference = request.user!.role === "company" ? text(request.body.registrationReference, 160) : (typeof request.body.registrationReference === "string" ? request.body.registrationReference.trim().slice(0, 160) || null : null);

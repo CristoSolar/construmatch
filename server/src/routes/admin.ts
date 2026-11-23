@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool, withTransaction } from "../db.ts";
-import { HttpError, text } from "../http.ts";
+import { allowOnlyFields, HttpError, text, uuid } from "../http.ts";
 import { requireRole, requireUser } from "../middleware/auth.ts";
 
 export const adminRouter = Router();
@@ -23,6 +23,8 @@ adminRouter.get("/verifications", async (_request, response, next) => {
 
 adminRouter.post("/verifications/:userId/review", async (request, response, next) => {
   try {
+    uuid(request.params.userId, true);
+    allowOnlyFields(request.body, ["status", "reason"]);
     const status = request.body.status;
     if (!(["verified", "rejected"] as const).includes(status)) throw new HttpError(400, "Decisión inválida.");
     const reason = text(request.body.reason, 800);
@@ -60,6 +62,8 @@ adminRouter.get("/moderation", async (_request, response, next) => {
 
 adminRouter.post("/moderation/users/:userId", async (request, response, next) => {
   try {
+    uuid(request.params.userId, true);
+    allowOnlyFields(request.body, ["action", "reason"]);
     if (request.params.userId === request.user!.id) throw new HttpError(400, "No puedes moderar tu propia cuenta.");
     const action = request.body.action;
     if (!(action === "suspend" || action === "restore")) throw new HttpError(400, "Acción inválida.");
@@ -79,6 +83,8 @@ adminRouter.post("/moderation/users/:userId", async (request, response, next) =>
 
 adminRouter.post("/moderation/projects/:projectId", async (request, response, next) => {
   try {
+    uuid(request.params.projectId, true);
+    allowOnlyFields(request.body, ["action", "reason"]);
     const action = request.body.action;
     if (!(action === "suspend" || action === "restore")) throw new HttpError(400, "Acción inválida.");
     const reason = text(request.body.reason, 800);
@@ -96,6 +102,8 @@ adminRouter.post("/moderation/projects/:projectId", async (request, response, ne
 
 adminRouter.post("/moderation/reports/:reportId", async (request, response, next) => {
   try {
+    uuid(request.params.reportId, true);
+    allowOnlyFields(request.body, ["status", "reason"]);
     const status = request.body.status;
     if (!(status === "resolved" || status === "dismissed")) throw new HttpError(400, "Estado inválido.");
     const reason = text(request.body.reason, 800);
