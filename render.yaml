@@ -1,0 +1,44 @@
+# Blueprint de Render: API + PostgreSQL. Render → New → Blueprint → CristoSolar/construmatch.
+# Al crearlo pide los valores marcados con sync: false.
+databases:
+  - name: construmatch-db
+    plan: free
+    databaseName: construmatch
+    user: construmatch
+    postgresMajorVersion: "17"
+
+services:
+  - type: web
+    name: construmatch-api
+    runtime: node
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod
+    startCommand: node server/src/app.ts
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: construmatch-db
+          property: connectionString
+      # La URL interna de Render no pasa por internet; sin TLS hacia la base.
+      - key: DATABASE_SSL
+        value: disable
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SESSION_DAYS
+        value: "7"
+      # URL pública del sitio en Cloudflare, p. ej. https://construmatch.<tu-subdominio>.workers.dev
+      - key: APP_ORIGIN
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_USERNAME
+        value: estructura.control
