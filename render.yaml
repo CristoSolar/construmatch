@@ -14,7 +14,8 @@ services:
     plan: free
     branch: main
     autoDeploy: true
-    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod
+    # npm viene con Node; corepack suele fallar en Render (permisos/firmas).
+    buildCommand: npm install --omit=dev --no-audit --no-fund
     startCommand: node server/src/app.ts
     healthCheckPath: /health
     envVars:
