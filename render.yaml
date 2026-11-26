@@ -14,8 +14,9 @@ services:
     plan: free
     branch: main
     autoDeploy: true
-    # npm viene con Node; corepack suele fallar en Render (permisos/firmas).
-    buildCommand: npm install --omit=dev --no-audit --no-fund
+    # npm viene con Node; corepack suele fallar en Render (permisos/firmas). Se borra node_modules
+    # porque la caché de Render puede traer el árbol de pnpm, que rompe a npm ("reading 'matches'").
+    buildCommand: rm -rf node_modules && npm install --omit=dev --no-audit --no-fund
     startCommand: node server/src/app.ts
     healthCheckPath: /health
     envVars:
