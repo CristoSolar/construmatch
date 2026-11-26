@@ -22,23 +22,29 @@ export default {
     headers.set("Host", upstream.host);
     headers.set("X-Forwarded-Host", url.host);
     headers.set("X-Forwarded-Proto", "https");
+    // Sin User-Agent, la protección anti-bots delante de Render responde con un desafío HTML.
+    if (!headers.get("User-Agent")) headers.set("User-Agent", "ConstruMatch-Proxy/1.0");
 
-    const upstreamResponse = await fetch(upstream, {
-      method: request.method,
-      headers,
-      body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
-      redirect: "manual",
-    });
-    const contentType = upstreamResponse.headers.get("content-type") ?? "";
-    if (upstreamResponse.status === 429 || upstreamResponse.status === 503 || contentType.includes("text/html")) {
-      return Response.json({
-        error: "upstream_waking",
-        message: "El servidor se está iniciando. Intenta nuevamente en un minuto.",
-      }, {
-        status: 503,
-        headers: { "Cache-Control": "no-store", "Retry-After": "60" },
-      });
+    // El cuerpo se guarda en memoria para poder reenviarlo: la API no lo recibió si Render aún despertaba.
+    const body = ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer();
+    // Plan gratuito de Render: el servicio se duerme y tarda ~30-60 s en despertar. Se reintenta hasta ~70 s.
+    for (const delay of [0, 3000, 5000, 8000, 10000, 12000, 15000, 15000]) {
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      const upstreamResponse = await fetch(upstream, { method: request.method, headers, body, redirect: "manual" }).catch(() => undefined);
+      if (upstreamResponse && !isWaking(upstreamResponse)) return upstreamResponse;
     }
-    return upstreamResponse;
+    return Response.json({
+      error: "upstream_waking",
+      message: "El servidor se está iniciando. Intenta nuevamente en un minuto.",
+    }, {
+      status: 503,
+      headers: { "Cache-Control": "no-store", "Retry-After": "60" },
+    });
   },
 };
+
+/** Respuesta del proxy de Render mientras el servicio arranca (no viene de la API). */
+function isWaking(response: Response): boolean {
+  const contentType = response.headers.get("content-type") ?? "";
+  return [429, 502, 503, 504].includes(response.status) || contentType.includes("text/html");
+}
