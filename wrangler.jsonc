@@ -4,7 +4,7 @@
   "compatibility_date": "2026-10-30",
   "main": "worker/src/index.ts",
   "vars": {
-    "API_ORIGIN": "https://construmatch-api.onrender.com"
+    "API_ORIGIN": "https://construmatch-api-ao4t.onrender.com"
   },
   "assets": {
     "directory": "./dist",
